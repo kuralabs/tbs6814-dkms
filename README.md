@@ -1,0 +1,78 @@
+# tbs6814-dkms
+
+Standalone Linux driver for the **TBS6814 Quad ISDB-T PCIe card**, built
+against the **stock upstream kernel** media core (`dvb-core`). It needs
+neither TBS's `media_build` nor their patched kernel media tree.
+
+| PCI | Value |
+|---|---|
+| Vendor:Device | `544d:6178` (TBS ECP3 FPGA PCIe bridge) |
+| Subsystem | `6814:xxxx` |
+| Frontends | 4x RAONTECH MTV23x (ISDB-T demod + tuner) on I2C buses 0-3 |
+
+## Modules
+
+| Module | Source | Role |
+|---|---|---|
+| `tbs6814.ko` | `src/tbsecp3-*.c` | PCIe bridge: IRQ, I2C masters, TS DMA, DVB adapters |
+| `mtv23x.ko` | `src/mtv23x.c` | I2C frontend driver, `SYS_ISDBT` only, no firmware needed |
+
+Only kernel dependency: the stock `dvb-core` (plus `i2c-core`/`regmap`).
+
+## Build
+
+```sh
+make                # against the running kernel
+make KVER=<version> # against another installed kernel's headers
+```
+
+## Provenance
+
+Derived from TBS's open-source driver:
+
+- Repository: <https://github.com/tbsdtv/linux_media>, branch `latest`
+- Commit: `2ce787de9f6e81b4294692a45de15596ae2e1322` (2026-07-24)
+- Files: `drivers/media/pci/tbsecp3/*`, `drivers/media/dvb-frontends/mtv23x*`
+
+The first commit in this repo is a verbatim copy of those files, so
+`git diff <first-commit>` shows every change made here.
+
+### Changes vs. upstream
+
+- Reduced to the TBS6814 only: removed every other board, all other
+  frontend/tuner glue, LNB/SEC control, CA (CAM), CI and ASI support
+  (`tbsecp3-ca.c`, `tbsecp3-ci.c`, `tbsecp3-asi.c`), and the `swapfe`,
+  `ciclock` and `cimode` module parameters.
+- Module renamed `tbsecp3` → `tbs6814`, so it can't collide with TBS's
+  own build.
+- No changes to I2C, DMA or register programming; the TBS6814
+  hardware sequence is the same as upstream's.
+
+Upstream's dvb-core adds fields to `struct dvb_frontend_ops` and
+`struct dtv_frontend_properties`. Nothing here uses them, so the modules
+build against unmodified kernel headers.
+
+## License
+
+The source files carry upstream's "GPL version 3 or later" header and
+`MODULE_LICENSE("GPL")`. Both are kept as received.
+
+## Known issues (inherited from upstream, to fix after hardware validation)
+
+1. `tbsecp3_i2c_remove_clients()` is `#if 0`'d out. The `try_module_get()`
+   taken on `mtv23x` is never released, so `mtv23x` can't be unloaded
+   after `tbs6814` is loaded.
+2. `tbsecp3_dma_free()`: `continue` skips `adapter++`, so after a partial
+   DMA allocation failure the later channels leak.
+3. DMA: `dma_set_mask(64)` is requested, but only `DMA_ADDRL` is
+   programmed (`DMA_ADDRH` = 0). This works only because the coherent mask
+   stays at the 32-bit default. Use
+   `dma_set_mask_and_coherent(DMA_BIT_MASK(32))` to make that explicit.
+4. `mtv23x_probe()` returns 0 (success) when the I2C scratch-register
+   check fails, leaving no frontend behind.
+5. `tbsecp3_i2c_init()` error path unregisters the adapter that failed to
+   register.
+6. Kernel API modernisation that will eventually be forced by upstream:
+   `pci_enable_msi()` → `pci_alloc_irq_vectors()`, tasklets → BH
+   workqueue, `i2c_algorithm.master_xfer` → `.xfer`, `strcpy` → `strscpy`.
+7. All 8 bridge I2C buses are registered, although the card uses 0-3.
