@@ -57,6 +57,43 @@ build against unmodified kernel headers.
 The source files carry upstream's "GPL version 3 or later" header and
 `MODULE_LICENSE("GPL")`. Both are kept as received.
 
+## Hardware validation
+
+2026-11-24, Ubuntu 26.04.1, kernel `7.0.0-44-generic`, stock `dvb-core`,
+built from commit `5d7ce13`, Costa Rica (ISDB-Tb) off-air signal:
+
+- All 4 MTV23x frontends probed (I2C 13-0043, 14-0044, 15-0043,
+  16-0044). MSI interrupt in use. `/dev/dvb/adapter0..3` created.
+- `dvbv5-scan` over UHF 14-51 (`scan/isdbt-6mhz-uhf.conf`) found 14
+  services on 7 multiplexes.
+- 4 tuners streaming at the same time (20 s each, 10-14 Mbit/s): no sync
+  errors. After the first ~1 s of demod settling: no TEI and no
+  continuity errors on video/audio PIDs. The only CC errors are on
+  broadcaster data PIDs, and they repeat identically when the same mux is
+  recorded on a different tuner alone, so they come from the source.
+
+Open observations:
+
+- The first scan right after module load locked only once and got no
+  PAT; signal stats came back as a percentage instead of dBm. A second
+  scan worked normally. Retest after a fresh load to see whether it's a
+  cold-start issue.
+- dvb-core logs `Frontend requested software zigzag, but didn't set the
+  frequency step size` once on first tune. Harmless.
+
+## Scanning
+
+No Costa Rica table exists in `dtv-scan-tables`. Costa Rica uses the
+same 6 MHz ISDB-Tb channel plan as Brazil (centre = 473.142857 MHz +
+6 MHz x (ch - 14)), so the generic `scan/isdbt-6mhz-uhf.conf` covers it:
+
+```sh
+dvbv5-scan -a 0 -o channels.conf scan/isdbt-6mhz-uhf.conf
+dvbv5-zap  -a 0 -c channels.conf -r "CANAL 6 HD"
+```
+
+Your user needs to be in the `video` group to open `/dev/dvb/*`.
+
 ## Known issues (inherited from upstream, to fix after hardware validation)
 
 1. `tbsecp3_i2c_remove_clients()` is `#if 0`'d out. The `try_module_get()`
