@@ -114,24 +114,39 @@ dvbv5-zap  -a 0 -c channels.conf -r "CANAL 6 HD"
 
 Your user needs to be in the `video` group to open `/dev/dvb/*`.
 
-## Known issues (inherited from upstream, to fix after hardware validation)
+## Fixes vs. upstream (0.2.0)
 
-1. `tbsecp3_i2c_remove_clients()` is `#if 0`'d out. The `try_module_get()`
-   taken on `mtv23x` is never released, so `mtv23x` can't be unloaded
-   after `tbs6814` is loaded.
-2. `tbsecp3_dma_free()`: `continue` skips `adapter++`, so after a partial
-   DMA allocation failure the later channels leak.
-3. DMA: `dma_set_mask(64)` is requested, but only `DMA_ADDRL` is
-   programmed (`DMA_ADDRH` = 0). This works only because the coherent mask
-   stays at the 32-bit default. Use
-   `dma_set_mask_and_coherent(DMA_BIT_MASK(32))` to make that explicit.
-4. `mtv23x_probe()` returns 0 (success) when the I2C scratch-register
-   check fails, leaving no frontend behind.
-5. `tbsecp3_i2c_init()` error path unregisters the adapter that failed to
-   register.
-6. Kernel API modernisation that will eventually be forced by upstream:
-   `pci_enable_msi()` → `pci_alloc_irq_vectors()`, tasklets → BH
-   workqueue, `i2c_algorithm.master_xfer` → `.xfer`, `strcpy` → `strscpy`.
-7. All 8 bridge I2C buses are registered, although the card uses 0-3.
-8. `mtv23x` signal strength without lock can underflow and report garbage
-   (seen: `281479271743486.62%` on UHF 23).
+Each is a separate commit; `git log` has the details.
+
+- Demod I2C clients are released on teardown, after the frontend is
+  detached. Upstream had this `#if 0`'d out, leaking a reference on
+  `mtv23x` so it could never be unloaded.
+- Attach error paths: unbound I2C clients are unregistered, and a probe
+  that yields no frontend fails cleanly instead of dereferencing NULL.
+- `mtv23x` probe fails when the chip check fails, instead of binding
+  without a frontend.
+- `mtv23x` relative signal strength is clamped (it underflowed below
+  -100 dBm, e.g. `281479271743486.62%`), and a partial OFDM/TMCC lock
+  reports `FE_HAS_SIGNAL | FE_HAS_CARRIER` instead of leaving the status
+  unset and logging on every poll.
+- DMA: explicit 32-bit DMA mask (only `DMA_ADDRL` is programmed), and no
+  buffer leak after a partial allocation failure.
+- I2C adapter unwind on registration failure no longer deletes the
+  adapter that failed to register.
+- Teardown order: adapters are detached before the IRQ is freed, and
+  pending TS work is flushed before the demux is freed.
+- Kernel API: `pci_alloc_irq_vectors()` instead of `pci_enable_msi()`,
+  BH workqueue instead of a tasklet, `i2c_algorithm.xfer`, `strscpy()`.
+  The IRQ handler returns `IRQ_NONE` when nothing is pending.
+
+## Known issues
+
+- All 8 bridge I2C buses are registered, although the card uses 0-3.
+  Harmless; left as upstream programs the hardware.
+
+## Testing
+
+`tools/quad-test.sh [SECONDS] [FREQ0..FREQ3]` records the full TS from
+all four tuners at the same time and checks it with `tools/tscheck.py`
+(sync, TEI, per-PID continuity). The default frequencies are good
+multiplexes at the development site; pass your own elsewhere.

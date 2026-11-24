@@ -25,7 +25,12 @@ dkms-check:
 dkms-install: dkms-check
 	@test -z "$$(git status --porcelain)" || \
 		{ echo "error: working tree is dirty, commit first"; exit 1; }
-	-sudo dkms remove $(DKMS_NAME)/$(DKMS_VERSION) --all
+	@# unregister every installed version: they all own the same module
+	@# files. Old /usr/src/$(DKMS_NAME)-<version> trees are left in place.
+	@for v in $$(dkms status $(DKMS_NAME) | sed -n 's|^$(DKMS_NAME)/\([^,]*\),.*|\1|p' | sort -u); do \
+		echo "dkms remove $(DKMS_NAME)/$$v"; \
+		sudo dkms remove "$(DKMS_NAME)/$$v" --all; \
+	done
 	sudo rm -rf --one-file-system "$(DKMS_SRC)"
 	sudo mkdir -p "$(DKMS_SRC)"
 	git archive HEAD | sudo tar -x -C "$(DKMS_SRC)"
