@@ -2307,10 +2307,10 @@ static int mtv23x_read_status(struct dvb_frontend *fe, enum fe_status *status)
 		c->cnr.stat[1].uvalue = (cnr/500) * 656;
 		if (c->cnr.stat[1].uvalue > 0xffff)
 			c->cnr.stat[1].uvalue = 0xffff;
-	} else if (lock_st & RTV_ISDBT_TMCC_LOCK_MASK) {
-		printk("TMCC lock \n");
-	} else if (lock_st & RTV_ISDBT_OFDM_LOCK_MASK) {
-		printk("OFDM lock \n");
+	} else if (lock_st) {
+		/* OFDM or TMCC synchronised, but not both: carrier found */
+		*status = FE_HAS_SIGNAL | FE_HAS_CARRIER;
+		dev_dbg(&client->dev, "partial lock 0x%x\n", lock_st);
 	} else {
 		*status = FE_TIMEDOUT;
 	}
