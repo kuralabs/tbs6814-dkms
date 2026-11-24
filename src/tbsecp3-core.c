@@ -86,7 +86,9 @@ static irqreturn_t tbsecp3_irq_handler(int irq, void *dev_id)
 		}
 	}
 	tbs_write(TBSECP3_INT_BASE, TBSECP3_INT_EN, 1);
-	return IRQ_HANDLED;
+
+	/* lets the core spot a stuck line when INTx is shared */
+	return stat ? IRQ_HANDLED : IRQ_NONE;
 }
 
 static int tbsecp3_adapters_attach(struct tbsecp3_dev *dev)
@@ -147,38 +149,43 @@ static void tbsecp3_adapters_release(struct tbsecp3_dev *dev)
 }
 
 
-static bool tbsecp3_enable_msi(struct pci_dev *pci_dev, struct tbsecp3_dev *dev)
+static int tbsecp3_request_irq(struct tbsecp3_dev *dev)
 {
-	int err;
+	struct pci_dev *pdev = dev->pci_dev;
+	unsigned int types = PCI_IRQ_INTX;
+	int ret;
 
-	if (!enable_msi) {
-		dev_warn(&dev->pci_dev->dev,
+	if (enable_msi)
+		types |= PCI_IRQ_MSI;
+	else
+		dev_info(&pdev->dev,
 			"MSI disabled by module parameter 'enable_msi'\n");
-		return false;
-	}
 
-	err = pci_enable_msi(pci_dev);
-	if (err) {
-		dev_err(&dev->pci_dev->dev,
-			"Failed to enable MSI interrupt."
-			" Falling back to a shared IRQ\n");
-		return false;
+	/* prefers MSI when allowed and available, else legacy INTx */
+	ret = pci_alloc_irq_vectors(pdev, 1, 1, types);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "can't allocate an IRQ vector: %d\n", ret);
+		return ret;
 	}
+	dev->msi = pdev->msi_enabled;
 
-	/* no error - so request an msi interrupt */
-	err = request_irq(pci_dev->irq, tbsecp3_irq_handler, 0,
-				"tbsecp3", dev);
-	if (err) {
-		/* fall back to legacy interrupt */
-		dev_err(&dev->pci_dev->dev,
-			"Failed to get an MSI interrupt."
-			" Falling back to a shared IRQ\n");
-		pci_disable_msi(pci_dev);
-		return false;
+	ret = request_irq(pci_irq_vector(pdev, 0), tbsecp3_irq_handler,
+			  dev->msi ? 0 : IRQF_SHARED, "tbs6814", dev);
+	if (ret) {
+		dev_err(&pdev->dev, "can't request IRQ %d: %d\n",
+			pci_irq_vector(pdev, 0), ret);
+		pci_free_irq_vectors(pdev);
+		dev->msi = false;
 	}
-	return true;
+	return ret;
 }
 
+static void tbsecp3_free_irq(struct tbsecp3_dev *dev)
+{
+	free_irq(pci_irq_vector(dev->pci_dev, 0), dev);
+	pci_free_irq_vectors(dev->pci_dev);
+	dev->msi = false;
+}
 
 static int tbsecp3_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
@@ -231,18 +238,10 @@ static int tbsecp3_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err3;
 
 	/* interrupts */
-	if (tbsecp3_enable_msi(pdev, dev)) {
-		dev->msi = true;
-	} else {
-		ret = request_irq(pdev->irq, tbsecp3_irq_handler,
-				IRQF_SHARED, "tbsecp3", dev);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "%s: can't get IRQ %d\n",
-				dev->info->name, pdev->irq);
-			goto err4;
-		}
-		dev->msi = false;
-	}
+	ret = tbsecp3_request_irq(dev);
+	if (ret < 0)
+		goto err4;
+
 	/* global interrupt enable */
 	tbs_write(TBSECP3_INT_BASE, TBSECP3_INT_EN, 1);
 
@@ -250,8 +249,9 @@ static int tbsecp3_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (ret < 0)
 		goto err5;
 
-	dev_info(&pdev->dev, "%s: PCI %s, IRQ %d, MMIO 0x%lx\n",
-		dev->info->name, pci_name(pdev), pdev->irq,
+	dev_info(&pdev->dev, "%s: PCI %s, IRQ %d (%s), MMIO 0x%lx\n",
+		dev->info->name, pci_name(pdev), pci_irq_vector(pdev, 0),
+		dev->msi ? "MSI" : "INTx",
 		(unsigned long) pci_resource_start(pdev, 0));
 
 	//dev_info(&dev->pci_dev->dev, "%s ready\n", dev->info->name);
@@ -261,11 +261,7 @@ err5:
 	tbsecp3_adapters_detach(dev);
 
 	tbs_write(TBSECP3_INT_BASE, TBSECP3_INT_EN, 0);
-	free_irq(dev->pci_dev->irq, dev);
-	if (dev->msi) {
-		pci_disable_msi(pdev);
-		dev->msi = false;
-	}
+	tbsecp3_free_irq(dev);
 err4:
 	tbsecp3_i2c_exit(dev);
 err3:
@@ -287,12 +283,8 @@ static void tbsecp3_remove(struct pci_dev *pdev)
 	struct tbsecp3_dev *dev = pci_get_drvdata(pdev);
 
 	/* disable interrupts */
-	tbs_write(TBSECP3_INT_BASE, TBSECP3_INT_EN, 0); 
-	free_irq(pdev->irq, dev);
-	if (dev->msi) {
-		pci_disable_msi(pdev);
-		dev->msi = false;
-	}
+	tbs_write(TBSECP3_INT_BASE, TBSECP3_INT_EN, 0);
+	tbsecp3_free_irq(dev);
 	tbsecp3_adapters_detach(dev);
 	tbsecp3_adapters_release(dev);
 	tbsecp3_dma_free(dev);
