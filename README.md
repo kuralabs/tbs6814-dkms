@@ -133,3 +133,5 @@ Your user needs to be in the `video` group to open `/dev/dvb/*`.
    `pci_enable_msi()` → `pci_alloc_irq_vectors()`, tasklets → BH
    workqueue, `i2c_algorithm.master_xfer` → `.xfer`, `strcpy` → `strscpy`.
 7. All 8 bridge I2C buses are registered, although the card uses 0-3.
+8. `mtv23x` signal strength without lock can underflow and report garbage
+   (seen: `281479271743486.62%` on UHF 23).
