@@ -88,6 +88,12 @@ built from commit `5d7ce13`, Costa Rica (ISDB-Tb) off-air signal:
   broadcaster data PIDs, and they repeat identically when the same mux is
   recorded on a different tuner alone, so they come from the source.
 
+0.2.0 revalidated after a reboot, as loaded by DKMS/udev at boot: both
+modules unload and reload cleanly (`modprobe -r tbs6814 mtv23x`, three
+cycles); a 30 s four-tuner `tools/quad-test.sh` run is clean (no sync,
+TEI or video/audio CC errors); weak, unlockable channels report clamped
+signal values; no kernel warnings.
+
 Open observations:
 
 - The first scan right after module load locked only once and got no
