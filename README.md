@@ -92,8 +92,12 @@ Open observations:
 
 - The first scan right after module load locked only once and got no
   PAT; signal stats came back as a percentage instead of dBm. A second
-  scan worked normally. Retest after a fresh load to see whether it's a
-  cold-start issue.
+  scan worked normally. It didn't reproduce on a later fresh load (the
+  DKMS-installed module tuned and streamed on the first try). If it
+  recurs, compare against a `dvbv5-scan -v` log.
+- After lock, the demod needs ~1-1.5 s to settle; packets in that window
+  carry TEI. This is normal: start consuming the stream after
+  `FE_HAS_LOCK` plus a short delay, or let the player drop TEI packets.
 - dvb-core logs `Frontend requested software zigzag, but didn't set the
   frequency step size` once on first tune. Harmless.
 
