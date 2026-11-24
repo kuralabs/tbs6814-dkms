@@ -188,13 +188,12 @@ static int tbsecp3_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (pci_enable_device(pdev) < 0)
 		return -ENODEV;
 
-	if(dma_set_mask(&pdev->dev, DMA_BIT_MASK(64)))
-		if(dma_set_mask(&pdev->dev, DMA_BIT_MASK(32)))
-		{
-			dev_err(&pdev->dev, "64/32-bit PCI DMA not supported\n");
-			goto err0;	
-		}
-	
+	/* tbsecp3_dma_reg_init() programs only DMA_ADDRL; DMA_ADDRH is 0 */
+	if (dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32))) {
+		dev_err(&pdev->dev, "32-bit PCI DMA not supported\n");
+		goto err0;
+	}
+
 	pci_set_master(pdev);
 
 	dev = kzalloc(sizeof(struct tbsecp3_dev), GFP_KERNEL);
