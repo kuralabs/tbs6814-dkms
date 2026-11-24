@@ -1,0 +1,64 @@
+name: build
+
+# Early warning for kernel API changes: build the modules against the
+# kernels Ubuntu ships (and is about to ship) and against mainline.
+# A failing scheduled run means a kernel update would break the DKMS
+# build; GitHub emails the repository owner when that happens.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"   # weekly, Monday 06:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu:
+    name: ubuntu ${{ matrix.release }} headers
+    runs-on: ubuntu-latest
+    container: ubuntu:${{ matrix.release }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 26.04: LTS (GA kernel); rolling: latest release; devel: next release
+        release: ["26.04", "rolling", "devel"]
+    steps:
+      - uses: actions/checkout@v7
+      - run: sh tools/ci-distro-headers.sh
+
+  mainline:
+    name: mainline ${{ matrix.ref }}
+    runs-on: ubuntu-latest
+    container: ubuntu:devel
+    strategy:
+      fail-fast: false
+      matrix:
+        # release: newest vX.Y tag; master: current merge window / rc
+        ref: ["release", "master"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install kernel build dependencies
+        run: |
+          apt-get -qq update
+          DEBIAN_FRONTEND=noninteractive apt-get -qq install -y --no-install-recommends \
+            build-essential bc bison flex libelf-dev libssl-dev cpio kmod python3 \
+            git ca-certificates > /dev/null
+
+      - name: Fetch kernel source
+        env:
+          LINUX_GIT: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+        run: |
+          if [ "${{ matrix.ref }}" = release ]; then
+            ref=$(git ls-remote --tags --refs "$LINUX_GIT" 'v*' \
+                  | sed 's|.*refs/tags/||' | grep -v -- '-rc' | sort -V | tail -n 1)
+          else
+            ref=master
+          fi
+          echo "Kernel ref: $ref"
+          git clone -q --depth 1 --branch "$ref" "$LINUX_GIT" "$RUNNER_TEMP/linux"
+
+      - run: sh tools/ci-mainline.sh "$RUNNER_TEMP/linux"

@@ -150,6 +150,30 @@ Each is a separate commit; `git log` has the details.
 - All 8 bridge I2C buses are registered, although the card uses 0-3.
   Harmless; left as upstream programs the hardware.
 
+## Continuous integration
+
+[![build](https://github.com/kuralabs/tbs6814-dkms/actions/workflows/build.yml/badge.svg)](https://github.com/kuralabs/tbs6814-dkms/actions/workflows/build.yml)
+
+`.github/workflows/build.yml` builds both modules with `-Werror` on every
+push and pull request, and **weekly**, so kernel API changes show up
+before a kernel update breaks the DKMS build on a real machine:
+
+| Job | Builds against |
+|---|---|
+| `ubuntu 26.04 headers` | Ubuntu 26.04 LTS `linux-headers-generic` |
+| `ubuntu rolling headers` | latest Ubuntu release's generic headers |
+| `ubuntu devel headers` | next Ubuntu release's generic headers |
+| `mainline release` | newest mainline `vX.Y` tag |
+| `mainline master` | mainline `master` (merge window / rc) |
+
+The mainline jobs build a minimal `allnoconfig`-based kernel first, so
+`Module.symvers` lists the real exports and modpost fails on any symbol
+that was removed. Run them locally with
+`tools/ci-mainline.sh <linux-src>` or, as root in an Ubuntu container,
+`tools/ci-distro-headers.sh`. A failing `mainline master` alone is an
+early warning, not an emergency; a failing `ubuntu` job means the next
+Ubuntu kernel will break the build.
+
 ## Testing
 
 `tools/quad-test.sh [SECONDS] [FREQ0..FREQ3]` records the full TS from
