@@ -26,6 +26,22 @@ make                # against the running kernel
 make KVER=<version> # against another installed kernel's headers
 ```
 
+## Install (DKMS)
+
+DKMS rebuilds and installs both modules automatically for every new
+kernel. On boot, udev loads `tbs6814` from the card's PCI ID, and
+`tbs6814` loads `mtv23x` itself.
+
+```sh
+sudo apt install dkms linux-headers-generic
+make dkms-install      # installs the committed tree (git HEAD)
+dkms status tbs6814
+```
+
+After pulling new commits, run `make dkms-install` again (bump
+`PACKAGE_VERSION` in `dkms.conf` for releases). `make dkms-uninstall`
+removes it.
+
 ## Provenance
 
 Derived from TBS's open-source driver:
