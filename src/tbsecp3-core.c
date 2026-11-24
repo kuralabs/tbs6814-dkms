@@ -116,8 +116,8 @@ static void tbsecp3_adapters_detach(struct tbsecp3_dev *dev)
 		if (adapter->nr == -1)
 			continue;
 
-		tbsecp3_i2c_remove_clients(adapter);
 		tbsecp3_dvb_exit(adapter);
+		tbsecp3_i2c_remove_clients(adapter);
 	}
 }
 

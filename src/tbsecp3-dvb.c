@@ -117,13 +117,19 @@ static int tbsecp3_frontend_attach(struct tbsecp3_adapter *adapter)
 		info.platform_data = &mtv23x_config;
 		request_module(info.type);
 		client_demod = i2c_new_client_device(i2c, &info);
-		if (!i2c_client_has_driver(client_demod))
-		    goto frontend_atach_fail;
+		if (!i2c_client_has_driver(client_demod)) {
+			/* handles ERR_PTR from i2c_new_client_device() too */
+			i2c_unregister_device(client_demod);
+			goto frontend_atach_fail;
+		}
 		if (!try_module_get(client_demod->dev.driver->owner)) {
-		    i2c_unregister_device(client_demod);
-		    goto frontend_atach_fail;
+			i2c_unregister_device(client_demod);
+			goto frontend_atach_fail;
 		}
 		adapter->i2c_client_demod = client_demod;
+		/* probe() may succeed without providing a frontend */
+		if (adapter->fe == NULL)
+			goto frontend_atach_fail;
 		break;
 
 	default:
@@ -135,10 +141,10 @@ static int tbsecp3_frontend_attach(struct tbsecp3_adapter *adapter)
 	return 0;
 
 frontend_atach_fail:
-	tbsecp3_i2c_remove_clients(adapter);
 	if (adapter->fe != NULL)
-	    dvb_frontend_detach(adapter->fe);
+		dvb_frontend_detach(adapter->fe);
 	adapter->fe = NULL;
+	tbsecp3_i2c_remove_clients(adapter);
 	dev_err(&dev->pci_dev->dev, "TBSECP3 frontend %d attach failed\n",
 		adapter->nr);
 
