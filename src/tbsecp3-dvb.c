@@ -281,6 +281,9 @@ void tbsecp3_dvb_exit(struct tbsecp3_adapter *adapter)
     dvbdemux->dmx.remove_frontend(&dvbdemux->dmx, &adapter->fe_mem);
     dvbdemux->dmx.remove_frontend(&dvbdemux->dmx, &adapter->fe_hw);
     dvb_dmxdev_release(&adapter->dmxdev);
+    /* no users and DMA stopped; flush any pending TS work before the
+     * demux it feeds is freed */
+    cancel_work_sync(&adapter->dma_work);
     dvb_dmx_release(&adapter->demux);
     dvb_unregister_adapter(adap);
 }

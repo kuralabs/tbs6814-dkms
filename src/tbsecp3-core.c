@@ -285,10 +285,12 @@ static void tbsecp3_remove(struct pci_dev *pdev)
 {
 	struct tbsecp3_dev *dev = pci_get_drvdata(pdev);
 
+	/* adapters first: frontend teardown may still need I2C interrupts */
+	tbsecp3_adapters_detach(dev);
+
 	/* disable interrupts */
 	tbs_write(TBSECP3_INT_BASE, TBSECP3_INT_EN, 0);
 	tbsecp3_free_irq(dev);
-	tbsecp3_adapters_detach(dev);
 	tbsecp3_adapters_release(dev);
 	tbsecp3_dma_free(dev);
 	tbsecp3_i2c_exit(dev);
