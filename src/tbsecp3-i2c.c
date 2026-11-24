@@ -205,9 +205,9 @@ int tbsecp3_i2c_init(struct tbsecp3_dev *dev)
 			break;
 	}
 	if (ret) {
-		do {
+		/* bus i failed to register; unwind the ones before it */
+		while (--i >= 0)
 			tbsecp3_i2c_unregister(&dev->i2c_bus[i]);
-		} while (i-- > 0);
 	} else {
 		tbsecp3_i2c_reg_init(dev);
 	}
