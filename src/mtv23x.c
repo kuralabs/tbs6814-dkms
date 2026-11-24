@@ -2448,8 +2448,12 @@ static int mtv23x_probe(struct i2c_client *client)
 	if(ret)
 		goto err_regmap_exit;
 	ret = regmap_read(dev->regmap,0x20,&temp);
-	if(temp!=0xAA)
+	if(ret)
 		goto err_regmap_exit;
+	if(temp!=0xAA) {
+		ret = -ENODEV;
+		goto err_regmap_exit;
+	}
 
 	/* create a dvb frontend*/
 	memcpy(&dev->fe.ops,&mtv23x_ops,sizeof(struct dvb_frontend_ops));
