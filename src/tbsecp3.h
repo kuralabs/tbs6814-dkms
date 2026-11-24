@@ -23,19 +23,14 @@
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/proc_fs.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
-#include <linux/fs.h>
-#include <linux/kfifo.h>
 
 #include <media/dmxdev.h>
 #include <media/dvbdev.h>
 #include <media/dvb_demux.h>
 #include <media/dvb_frontend.h>
-#include <media/dvb_ringbuffer.h>
-#include <media/dvb_ca_en50221.h>
 #include <media/dvb_net.h>
 
 #include "tbsecp3-regs.h"
@@ -43,62 +38,7 @@
 #define TBSECP3_VID		0x544d
 #define TBSECP3_PID		0x6178
 
-#define TBSECP3_BOARD_TBS6205 	0
-#define TBSECP3_BOARD_TBS6281SE	1
-#define TBSECP3_BOARD_TBS6290SE	2
-#define TBSECP3_BOARD_TBS6209	3
-#define TBSECP3_BOARD_TBS6522 	4
-#define TBSECP3_BOARD_TBS6528	5
-#define TBSECP3_BOARD_TBS6590	6
-#define TBSECP3_BOARD_TBS6902	7
-#define TBSECP3_BOARD_TBS6903	8
-#define TBSECP3_BOARD_TBS6904	9
-#define TBSECP3_BOARD_TBS6905	10
-#define TBSECP3_BOARD_TBS6908	11
-#define TBSECP3_BOARD_TBS6909	12
-#define TBSECP3_BOARD_TBS6910	13
-#define TBSECP3_BOARD_TBS6704   14
-#define TBSECP3_BOARD_TBS6814	15
-#define TBSECP3_BOARD_TBS6514	16
-#define TBSECP3_BOARD_TBS690a	17
-#define TBSECP3_BOARD_TBS6301	18
-#define TBSECP3_BOARD_TBS6304	19
-#define TBSECP3_BOARD_TBS6308	20
-#define TBSECP3_BOARD_TBS6903X	21
-#define TBSECP3_BOARD_TBS6909X	22
-#define TBSECP3_BOARD_TBS6904X 	23
-#define TBSECP3_BOARD_TBS6912 	24
-#define TBSECP3_BOARD_TBS6504	25
-#define TBSECP3_BOARD_TBS6508	26
-#define TBSECP3_BOARD_TBS6302SE	27
-#define TBSECP3_BOARD_TBS6902SE 28
-#define TBSECP3_BOARD_TBS6904SE 29
-#define TBSECP3_BOARD_TBS6301SE 30
-#define TBSECP3_BOARD_TBS6910SE 31
-#define TBSECP3_BOARD_TBS7901   32
-#define TBSECP3_BOARD_TBS6209SE 33
-#define TBSECP3_BOARD_TBS7230 34
-#define TBSECP3_BOARD_TBS6302X 35
-#define TBSECP3_BOARD_TBS6302T 36
-#define TBSECP3_BOARD_TBS6304X	37
-#define TBSECP3_BOARD_TBS6290TD	38
-#define TBSECP3_BOARD_TBS6281TD	39
-#define TBSECP3_BOARD_TBS6205SE	40
-#define TBSECP3_BOARD_TBS6909SE	41
-#define TBSECP3_BOARD_TBS6304T	42
-#define TBSECP3_BOARD_TBS6522H	43
-#define TBSECP3_BOARD_TBS6504H	44
-#define TBSECP3_BOARD_TBS6590SE	45
-#define TBSECP3_BOARD_TBS6308X	46
-#define TBSECP3_BOARD_TBS6916	47
-#define TBSECP3_BOARD_TBS6312X	48
-#define TBSECP3_BOARD_TBS6324	49
-#define TBSECP3_BOARD_TBS6322	50
-#define TBSECP3_BOARD_TBS6304RV 51
-#define TBSECP3_BOARD_TBS6302RV	52
-#define TBSECP3_BOARD_TBS6331	53
-#define TBSECP3_BOARD_TBS6216   54
-#define TBSECP3_BOARD_TBS6910X	55
+#define TBSECP3_BOARD_TBS6814	0
 
 #define TBSECP3_MAX_ADAPTERS	(16)
 #define TBSECP3_MAX_I2C_BUS	(8)
@@ -120,29 +60,23 @@ struct tbsecp3_gpio_pin {
 };
 
 struct tbsecp3_gpio_config {
-	struct tbsecp3_gpio_pin lnb_power;
-	struct tbsecp3_gpio_pin lnb_voltage;
 	struct tbsecp3_gpio_pin demod_reset;
 };
 
 struct tbsecp3_adap_config {
-        u32 ts_in;
+	u32 ts_in;
 	u8 i2c_bus_nr;
 	struct tbsecp3_gpio_config gpio;
 };
-struct tbsecp3_ci_config{
-	u32 base;
-};
+
 struct tbsecp3_board {
 	u16  board_id;
 	char *name;
 	int adapters;
-	int sec;	//for sec files.
 	u32 i2c_speed;
 	u8 eeprom_i2c;
 	u8 eeprom_addr;
-	struct tbsecp3_adap_config adap_config[16];
-	struct tbsecp3_ci_config ci_config[2];
+	struct tbsecp3_adap_config adap_config[TBSECP3_MAX_ADAPTERS];
 };
 
 struct tbsecp3_i2c {
@@ -169,47 +103,6 @@ struct tbsecp3_dma_channel {
 	u8 next_buffer;
 };
 
-struct tbsecp3_ca {
-	int nr;
-	u32 base;
-	struct dvb_ca_en50221 ca;
-
-	struct tbsecp3_adapter *adapter;
-	struct mutex lock;
-	int status;
-};
-
-struct tbsecp3_ci{
-	int nr;
-	u32 base;
-	u8			dma_offset;
-	u8			next_buffer;
-	u8			cnt;
-	struct tbsecp3_adapter *adapter;
-	struct work_struct	read_work;
-	struct work_struct	write_work;
-	wait_queue_head_t	write_wq;
-	wait_queue_head_t	read_wq;
-	u8			write_ready;
-	u8			read_ready;
-	spinlock_t 		readlock;
-	spinlock_t		writelock;
-
-	__le32			*w_dmavirt;
-	dma_addr_t		w_dmaphy;	
-	__le32			*r_dmavirt;
-	dma_addr_t		r_dmaphy;	
-	struct kfifo 		w_fifo; 
-	struct kfifo 		r_fifo; 
-	u8			is_open;	
-	u32			w_bitrate;
-	int is_open_for_read;
-	int feeds;
-	struct dvb_device    *ci_dev;
-
-};
-
-
 struct tbsecp3_adapter {
 	int nr;
 	struct tbsecp3_adap_config *cfg;
@@ -225,8 +118,6 @@ struct tbsecp3_adapter {
 	/* dvb */
 	struct dvb_adapter dvb_adapter;
 	struct dvb_frontend *fe;
-	struct dvb_frontend *fe2;
-	struct dvb_frontend _fe2;
 	struct dvb_demux demux;
 	struct dmxdev dmxdev;
 	struct dvb_net dvbnet;
@@ -238,11 +129,6 @@ struct tbsecp3_adapter {
 	spinlock_t adap_lock;
 	struct tasklet_struct tasklet;
 	struct tbsecp3_dma_channel dma;
-
-	/* ca interface */
-	struct tbsecp3_ca *tbsca;
-	/*6910X*/
-	struct tbsecp3_ci *tbsci;
 };
 
 struct tbsecp3_dev {
@@ -258,9 +144,6 @@ struct tbsecp3_dev {
 
 	/* i2c */
 	struct tbsecp3_i2c i2c_bus[TBSECP3_MAX_I2C_BUS];
-	
-	u8 mac_num;
-	int cimode; //for 6910X
 };
 
 #define tbs_read(_b, _o)	readl(dev->lmmio + (_b + _o))
@@ -271,24 +154,18 @@ struct tbsecp3_dev {
 void tbsecp3_gpio_set_pin(struct tbsecp3_dev *dev,
 			  struct tbsecp3_gpio_pin *pin, int state);
 
-/* tbspcie-i2c.c */
+/* tbsecp3-i2c.c */
 extern int tbsecp3_i2c_init(struct tbsecp3_dev *dev);
 extern void tbsecp3_i2c_exit(struct tbsecp3_dev *dev);
 extern void tbsecp3_i2c_reg_init(struct tbsecp3_dev *dev);
 extern void tbsecp3_i2c_remove_clients(struct tbsecp3_adapter *adapter);
 
-/* tbspcie-cards.c */
+/* tbsecp3-cards.c */
 extern struct tbsecp3_board tbsecp3_boards[];
 
-/* tbspcie-dvb.c */
+/* tbsecp3-dvb.c */
 extern int tbsecp3_dvb_init(struct tbsecp3_adapter *adapter);
 extern void tbsecp3_dvb_exit(struct tbsecp3_adapter *adapter);
-
-/* tbsecp3-asi.c */
-extern u8 asi_CheckFree(struct tbsecp3_dev *dev,int asi_base_addr, unsigned char OpbyteNum);
-extern bool asi_chip_reset(struct tbsecp3_dev *dev,int asi_base_addr);
-extern int asi_read16bit(struct tbsecp3_dev *dev,int asi_base_addr,int reg_addr);
-extern bool asi_write16bit(struct tbsecp3_dev *dev,int asi_base_addr, int reg_addr, int data16bit);
 
 /* tbsecp3-dma.c */
 extern int tbsecp3_dma_init(struct tbsecp3_dev *dev);
@@ -296,14 +173,5 @@ extern void tbsecp3_dma_free(struct tbsecp3_dev *dev);
 extern void tbsecp3_dma_reg_init(struct tbsecp3_dev *dev);
 extern void tbsecp3_dma_enable(struct tbsecp3_adapter *adap);
 extern void tbsecp3_dma_disable(struct tbsecp3_adapter *adap);
-
-/* tbsecp3-ca.c */
-int tbsecp3_ca_init(struct tbsecp3_adapter *adap, int nr);
-void tbsecp3_ca_release(struct tbsecp3_adapter *adap);
-
-/*tbsecp3-ci.c*/
-int tbsecp3_ci_init(struct tbsecp3_adapter *adap,int nr,int cimode);
-void tbsecp3_ci_remove(struct tbsecp3_adapter *adap);
-
 
 #endif
