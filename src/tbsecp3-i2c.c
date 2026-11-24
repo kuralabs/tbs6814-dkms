@@ -113,8 +113,8 @@ static u32 i2c_functionality(struct i2c_adapter *adap)
 	return I2C_FUNC_SMBUS_EMUL;
 }
 
-struct i2c_algorithm tbsecp3_i2c_algo_template = {
-	.master_xfer   = i2c_xfer,
+static const struct i2c_algorithm tbsecp3_i2c_algo_template = {
+	.xfer          = i2c_xfer,
 	.functionality = i2c_functionality,
 };
 
@@ -127,13 +127,13 @@ static int tbsecp3_i2c_register(struct tbsecp3_i2c *bus)
 	mutex_init(&bus->lock);
 
 	adap = &bus->i2c_adap;
-	strcpy(adap->name, "tbsecp3");
+	strscpy(adap->name, "tbsecp3", sizeof(adap->name));
 	adap->algo = &tbsecp3_i2c_algo_template;
 	adap->algo_data = (void*) bus;
 	adap->dev.parent = &dev->pci_dev->dev;
 	adap->owner = THIS_MODULE;
 	
-	strcpy(bus->i2c_client.name, "tbsecp3cli");
+	strscpy(bus->i2c_client.name, "tbsecp3cli", sizeof(bus->i2c_client.name));
 	bus->i2c_client.adapter = adap;
 
 	i2c_set_adapdata(&bus->i2c_adap, bus);
