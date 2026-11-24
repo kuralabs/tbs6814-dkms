@@ -2266,7 +2266,8 @@ static int mtv23x_read_status(struct dvb_frontend *fe, enum fe_status *status)
 	c->strength.stat[0].svalue = rssi * 100;
 	
 	c->strength.stat[1].scale = FE_SCALE_RELATIVE;
-	c->strength.stat[1].uvalue = (1000 + rssi) * 65;
+	/* rssi is in 0.1 dBm: map -100.0..0 dBm to 0..65000, clamped */
+	c->strength.stat[1].uvalue = clamp(1000 + rssi, 0, 1000) * 65;
 
 
 	rtv_UpdateMon(dev);
