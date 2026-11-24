@@ -23,9 +23,10 @@ MODULE_PARM_DESC(dma_pkts, "DMA buffer size in TS packets (16-256), default 128"
 
 #define TS_PACKET_SIZE		188
 
-static void tbsecp3_dma_tasklet(unsigned long adap)
+void tbsecp3_dma_work(struct work_struct *work)
 {
-	struct tbsecp3_adapter *adapter = (struct tbsecp3_adapter *) adap;
+	struct tbsecp3_adapter *adapter =
+		container_of(work, struct tbsecp3_adapter, dma_work);
 	struct tbsecp3_dev *dev = adapter->dev;
 	u32 read_buffer, next_buffer;
 	u8* data;
@@ -166,8 +167,6 @@ int tbsecp3_dma_init(struct tbsecp3_dev *dev)
 		for (j = 1; j < TBSECP3_DMA_BUFFERS + 1; j++)
 			adapter->dma.buf[j] = adapter->dma.buf[j-1] + adapter->dma.buffer_size;
 
-		tasklet_init(&adapter->tasklet, tbsecp3_dma_tasklet, (unsigned long) adapter);
-		spin_lock_init(&adapter->adap_lock);
 		adapter++;
 	}
 	tbsecp3_dma_reg_init(dev);

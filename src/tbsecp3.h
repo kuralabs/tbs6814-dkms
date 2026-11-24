@@ -26,6 +26,7 @@
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
+#include <linux/workqueue.h>
 
 #include <media/dmxdev.h>
 #include <media/dvbdev.h>
@@ -127,7 +128,7 @@ struct tbsecp3_adapter {
 
 	/* dma */
 	spinlock_t adap_lock;
-	struct tasklet_struct tasklet;
+	struct work_struct dma_work;	/* runs on system_bh_wq */
 	struct tbsecp3_dma_channel dma;
 };
 
@@ -173,5 +174,6 @@ extern void tbsecp3_dma_free(struct tbsecp3_dev *dev);
 extern void tbsecp3_dma_reg_init(struct tbsecp3_dev *dev);
 extern void tbsecp3_dma_enable(struct tbsecp3_adapter *adap);
 extern void tbsecp3_dma_disable(struct tbsecp3_adapter *adap);
+extern void tbsecp3_dma_work(struct work_struct *work);
 
 #endif

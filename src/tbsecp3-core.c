@@ -60,7 +60,7 @@ static irqreturn_t tbsecp3_irq_handler(int irq, void *dev_id)
 		for (i = 0; i < dev->info->adapters; i++) {
 			in = dev->adapter[i].cfg->ts_in;
 			if (stat & TBSECP3_DMA_IF(in)){
-				tasklet_schedule(&dev->adapter[i].tasklet);
+				queue_work(system_bh_wq, &dev->adapter[i].dma_work);
 				}
 		}
 	
@@ -134,6 +134,9 @@ static void tbsecp3_adapters_init(struct tbsecp3_dev *dev)
 		adapter->cfg = &dev->info->adap_config[i];
 		adapter->dev = dev;
 		adapter->i2c = &dev->i2c_bus[adapter->cfg->i2c_bus_nr];
+		/* before anything that can fail: release() cancels the work */
+		spin_lock_init(&adapter->adap_lock);
+		INIT_WORK(&adapter->dma_work, tbsecp3_dma_work);
 	}
 }
 
@@ -144,7 +147,7 @@ static void tbsecp3_adapters_release(struct tbsecp3_dev *dev)
 
 	for (i = 0; i < dev->info->adapters; i++) {
 		adapter = &dev->adapter[i];
-		tasklet_kill(&adapter->tasklet);
+		cancel_work_sync(&adapter->dma_work);
 	}
 }
 
